@@ -1,0 +1,28 @@
+---
+- name: Recolectar información de todos los servidores
+  hosts: all
+  gather_facts: true
+
+- name: Configurar Servidor de Identidad (Docker, Authelia, LLDAP)
+  hosts: identity
+  become: true
+  roles:
+    - identity
+
+- name: Configurar Kong API Gateway
+  hosts: kong
+  become: true
+  roles:
+    - kong
+
+- name: Configurar Clúster de Kubernetes (Master y Workers)
+  hosts: k8s
+  become: true
+  roles:
+    - k3s
+
+- name: Desplegar Infraestructura Interna en Kubernetes 
+  hosts: k8s_master
+  become: true
+  roles:
+    - despliegue-interno

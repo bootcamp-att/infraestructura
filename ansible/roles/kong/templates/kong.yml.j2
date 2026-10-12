@@ -1,0 +1,266 @@
+_format_version: "3.0"
+_transform: true
+
+services:
+  # 1. Landing Page principal (Pública)
+  - name: static-index-service
+    url: http://127.0.0.1:8080/
+    routes:
+      - name: main-route
+        paths:
+          - /
+        strip_path: false
+        protocols:
+          - http
+          - https
+
+  # 2. Portal de Identidad Authelia (Público)
+  - name: authelia-service
+    url: http://{{ hostvars['identity_server']['ansible_host'] }}:9091
+    routes:
+      - name: authelia-route
+        paths:
+          - /authelia
+        strip_path: false
+        preserve_host: true
+        protocols:
+          - http
+          - https
+
+  # 3. Portal Privado
+  - name: internal-portal-service
+    url: http://127.0.0.1:8080
+    routes:
+      - name: internal-portal-route
+        paths:
+          - /home
+        strip_path: false
+        preserve_host: true
+        protocols:
+          - http
+          - https
+
+  # 4. API de Productos (PRIVADA -> Kubernetes Ingress)
+  - name: k8s-products-service
+    url: http://{{ hostvars[groups['k8s_master'][0]]['ansible_host'] }}
+    routes:
+      - name: products-route
+        paths:
+          - /api/v1/products
+        strip_path: false
+        preserve_host: true
+        protocols:
+          - http
+          - https
+
+  # 5. PgAdmin (Privada -> Kubernetes Ingress)
+  - name: k8s-pgadmin-service
+    url: http://{{ hostvars[groups['k8s_master'][0]]['ansible_host'] }}
+    routes:
+      - name: pgadmin-route
+        paths:
+          - /interno/pgadmin
+        strip_path: false
+        preserve_host: true
+        protocols:
+          - http
+          - https
+
+  # 6. Prometheus (Privada -> Kubernetes Ingress)
+  - name: k8s-prometheus-service
+    url: http://{{ hostvars[groups['k8s_master'][0]]['ansible_host'] }}
+    routes:
+      - name: prometheus-route
+        paths:
+          - /interno/prometheus
+        strip_path: false
+        preserve_host: true
+        protocols:
+          - http
+          - https
+
+  # 7. Grafana (Privada -> Kubernetes Ingress)
+  - name: k8s-grafana-service
+    url: http://{{ hostvars[groups['k8s_master'][0]]['ansible_host'] }}
+    routes:
+      - name: grafana-route
+        paths:
+          - /interno/grafana
+        strip_path: false
+        preserve_host: true
+        protocols:
+          - http
+          - https
+
+  # 8. Loki (Privada -> Kubernetes Ingress)
+  - name: k8s-loki-service
+    url: http://{{ hostvars[groups['k8s_master'][0]]['ansible_host'] }}
+    routes:
+      - name: loki-route
+        paths:
+          - /interno/loki
+        strip_path: false
+        preserve_host: true
+        protocols:
+          - http
+          - https
+
+  # 9. Jaeger (Privada -> Kubernetes Ingress)
+  - name: k8s-jaeger-service
+    url: http://{{ hostvars[groups['k8s_master'][0]]['ansible_host'] }}
+    routes:
+      - name: k8s-jaeger-route
+        paths:
+          - /interno/jaeger
+        strip_path: false
+        preserve_host: true
+        protocols:
+          - http
+          - https
+
+
+plugins:
+  - name: pre-function
+    config:
+      access:
+        - |
+          -- ============================================================
+          -- 1. REDIRECCIÓN GLOBAL HTTP -> HTTPS
+          -- ============================================================
+
+          if kong.request.get_scheme() == "http" then
+            local host = kong.request.get_host()
+            local uri = kong.request.get_path_with_query()
+
+            local https_url = "https://" .. host .. uri
+
+            return kong.response.exit(301, "Redirecting...", {
+              ["Location"] = https_url
+            })
+          end
+
+
+          -- ============================================================
+          -- 2. DETERMINAR RUTAS PRIVADAS
+          -- ============================================================
+
+          local path = kong.request.get_path()
+
+          local is_private =
+              path:sub(1, 8) == "/interno"
+              or path:sub(1, 5) == "/home"
+              or path == "/api/v1/products"
+              or path:sub(1, 17) == "/api/v1/products/"
+
+
+          -- ============================================================
+          -- 3. VALIDAR SESIÓN CONTRA AUTHELIA
+          -- ============================================================
+
+          if is_private then
+
+            local ok, http = pcall(require, "resty.http")
+
+            if not ok then
+              kong.log.err(
+                "No se pudo cargar la libreria resty.http: ",
+                http
+              )
+
+              return kong.response.exit(
+                500,
+                "Error interno de autenticacion en API Gateway."
+              )
+            end
+
+
+            local httpc = http.new()
+
+            httpc:set_timeout(3000)
+
+
+            -- Endpoint de verificación de sesión de Authelia
+            local auth_url =
+              "http://{{ hostvars['identity_server']['ansible_host'] }}:9091/authelia/api/verify"
+
+
+            -- ========================================================
+            -- 4. ENVIAR LA COOKIE DE SESIÓN A AUTHELIA
+            -- ========================================================
+
+            local res, err = httpc:request_uri(auth_url, {
+
+              method = "GET",
+
+              headers = {
+
+                ["X-Original-URL"] =
+                  kong.request.get_scheme()
+                  .. "://"
+                  .. kong.request.get_host()
+                  .. kong.request.get_path_with_query(),
+
+                ["X-Forwarded-Method"] =
+                  kong.request.get_method(),
+
+                ["X-Forwarded-Proto"] =
+                  kong.request.get_scheme(),
+
+                ["X-Forwarded-Host"] =
+                  kong.request.get_host(),
+
+                ["X-Forwarded-URI"] =
+                  kong.request.get_path_with_query(),
+
+                ["X-Forwarded-For"] =
+                  kong.client.get_forwarded_ip(),
+
+                -- IMPORTANTE:
+                -- reenviar la cookie authelia_session
+                ["Cookie"] =
+                  kong.request.get_header("Cookie") or ""
+              }
+            })
+
+
+            -- ========================================================
+            -- 5. SESIÓN VÁLIDA
+            -- ========================================================
+
+            if res and res.status == 200 then
+
+              -- Authelia confirmó que el usuario está autenticado.
+              -- Kong permite continuar hacia Kubernetes.
+
+              kong.log.debug(
+                "Autenticacion Authelia correcta para: ",
+                path
+              )
+
+            else
+
+              -- ======================================================
+              -- 6. SESIÓN NO VÁLIDA
+              -- ======================================================
+
+              local target_url =
+                "https://"
+                .. kong.request.get_host()
+                .. "/authelia/?rd="
+                .. kong.request.get_scheme()
+                .. "://"
+                .. kong.request.get_host()
+                .. kong.request.get_path_with_query()
+
+
+              return kong.response.exit(
+                302,
+                "Redirecting to Auth...",
+                {
+                  ["Location"] = target_url
+                }
+              )
+
+            end
+
+          end

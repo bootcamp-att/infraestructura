@@ -1,0 +1,152 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Página No Encontrada | Bootcamp EspecializATT</title>
+  <style>
+    :root {
+      --primary: #003366;
+      --primary-light: #0055a5;
+      --secondary: #00a8cc;
+      --bg-main: #f8fafc;
+      --bg-card: #ffffff;
+      --text-main: #1e293b;
+      --text-muted: #64748b;
+      --border: #e2e8f0;
+      --shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.05), 0 4px 6px -2px rgba(0, 0, 0, 0.025);
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+      font-family: 'Segoe UI', -apple-system, BlinkMacSystemFont, Roboto, sans-serif;
+    }
+
+    body {
+      background-color: var(--bg-main);
+      color: var(--text-main);
+      line-height: 1.6;
+      padding-bottom: 60px;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+    }
+
+    header {
+      background: linear-gradient(135deg, var(--primary) 0%, var(--primary-light) 100%);
+      color: white;
+      padding: 50px 20px;
+      text-align: center;
+      border-bottom: 4px solid var(--secondary);
+    }
+
+    .badge {
+      background-color: rgba(255, 255, 255, 0.15);
+      color: #ffffff;
+      padding: 6px 16px;
+      border-radius: 20px;
+      font-size: 0.85rem;
+      font-weight: 600;
+      letter-spacing: 1px;
+      text-transform: uppercase;
+      display: inline-block;
+      margin-bottom: 15px;
+    }
+
+    header h1 {
+      font-size: 2.2rem;
+      font-weight: 700;
+      margin-bottom: 10px;
+    }
+
+    header p {
+      font-size: 1rem;
+      max-width: 700px;
+      margin: 0 auto;
+      opacity: 0.9;
+    }
+
+    .container {
+      max-width: 800px;
+      margin: 40px auto;
+      padding: 0 20px;
+      flex: 1;
+    }
+
+    .error-card {
+      background-color: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 40px;
+      text-align: center;
+      box-shadow: var(--shadow);
+    }
+
+    .error-code {
+      font-size: 4rem;
+      font-weight: 800;
+      color: #ef4444;
+      margin-bottom: 10px;
+      line-height: 1;
+    }
+
+    .error-card h2 {
+      font-size: 1.6rem;
+      color: var(--primary);
+      margin-bottom: 15px;
+    }
+
+    .error-card p {
+      color: var(--text-muted);
+      font-size: 1rem;
+      margin-bottom: 30px;
+    }
+
+    .btn-home {
+      display: inline-block;
+      background-color: var(--primary);
+      color: white;
+      text-decoration: none;
+      padding: 12px 28px;
+      border-radius: 6px;
+      font-weight: 600;
+      transition: background-color 0.2s ease;
+    }
+
+    .btn-home:hover {
+      background-color: var(--primary-light);
+    }
+
+    footer {
+      text-align: center;
+      padding: 20px;
+      font-size: 0.85rem;
+      color: var(--text-muted);
+    }
+  </style>
+</head>
+<body>
+
+  <header>
+    <span class="badge">Emtech Institute • México 2026</span>
+    <h1>Bootcamp EspecializATT</h1>
+    <p>Desarrollo de Microservicios Seguros, Resilientes y Observables en Kubernetes</p>
+  </header>
+
+  <div class="container">
+    <div class="error-card">
+      <div class="error-code">404</div>
+      <h2>Recurso no encontrado</h2>
+      <p>La ruta o servicio al que intentas acceder no existe o no está disponible en el API Gateway.</p>
+      <a href="/" class="btn-home">Volver al Portal Principal</a>
+    </div>
+  </div>
+
+  <footer>
+    <p>© 2026 Emtech Institute. Todos los derechos reservados.</p>
+  </footer>
+
+</body>
+</html>

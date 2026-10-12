@@ -1,0 +1,83 @@
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: prometheus-pvc
+  namespace: herramientas
+spec:
+  accessModes: [ReadWriteOnce]
+  storageClassName: local-path
+  resources:
+    requests:
+      storage: 5Gi
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: prometheus
+  namespace: herramientas
+  labels:
+    app: prometheus
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app: prometheus
+  template:
+    metadata:
+      labels:
+        app: prometheus
+    spec:
+      affinity:
+        nodeAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            nodeSelectorTerms:
+              - matchExpressions:
+                  - key: node-role.kubernetes.io/control-plane
+                    operator: DoesNotExist
+      containers:
+      - name: prometheus
+        image: prom/prometheus:v3.15.0
+        imagePullPolicy: IfNotPresent
+        args:
+          - "--config.file=/etc/prometheus/prometheus.yml"
+          - "--web.external-url=/interno/prometheus/"
+          - "--web.route-prefix=/"
+          - "--storage.tsdb.path=/prometheus"
+          - "--storage.tsdb.retention.time=7d"
+          - "--storage.tsdb.retention.size=4GB"
+        ports:
+        - containerPort: 9090
+          name: http
+        resources:
+          requests:
+            cpu: 100m
+            memory: 256Mi
+            ephemeral-storage: 200Mi
+        volumeMounts:
+        - name: config-volume
+          mountPath: /etc/prometheus
+        - name: data
+          mountPath: /prometheus
+      volumes:
+      - name: config-volume
+        configMap:
+          name: prometheus-config
+      - name: data
+        persistentVolumeClaim:
+          claimName: prometheus-pvc
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: prometheus
+  namespace: herramientas
+spec:
+  type: ClusterIP
+  ports:
+  - port: 9090
+    targetPort: 9090
+    name: http
+  selector:
+    app: prometheus

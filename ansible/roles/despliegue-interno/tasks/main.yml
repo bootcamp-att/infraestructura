@@ -1,0 +1,61 @@
+---
+# ====================================================
+# DESPLIEGUE DE HERRAMIENTAS Y OBSERVABILIDAD EN KUBERNETES
+# ====================================================
+
+- name: Asegurar directorio temporal de manifiestos en el Master
+  file:
+    path: /tmp/manifests/herramientas
+    state: directory
+    mode: '0755'
+  when: "'k8s_master' in group_names"
+
+- name: Copiar manifiestos YAML al Master
+  copy:
+    src: "{{ item }}"
+    dest: "/tmp/manifests/herramientas/{{ item }}"
+    mode: '0644'
+  loop:
+    - 01-namespace.yaml
+    - 02-postgres-secret.yaml
+    - 03-postgres-pvc.yaml
+    - 04-postgres-deployment.yaml
+    - 05-postgres-service.yaml
+    - 06-pgadmin-config.yaml
+    - 07-pgadmin-deployment.yaml
+    - 08-pgadmin-service.yaml
+    - 09-pgadmin-ingress.yaml
+    - 10-postgres-exporter.yaml
+    - 11-prometheus.yaml
+    - 12-prometheus-ingress.yaml
+    - 13-loki.yaml
+    - 14-loki-ingress.yaml
+    - 15-jaeger.yaml
+    - 16-jaeger-ingress.yaml
+    - 17-grafana.yaml
+    - 18-grafana-ingress.yaml
+    - 19-alloy.yaml
+  when: "'k8s_master' in group_names"
+
+- name: Aplicar manifiestos K8s con kubectl
+  shell: |
+    k3s kubectl apply -f /tmp/manifests/herramientas/ --validate=false
+  when: "'k8s_master' in group_names"
+  register: kubectl_apply_res
+  changed_when: "'configured' in kubectl_apply_res.stdout or 'created' in kubectl_apply_res.stdout"
+
+- name: Reiniciar DaemonSet de Alloy para aplicar nuevo RBAC
+  shell: |
+    k3s kubectl rollout restart daemonset/alloy -n herramientas
+  when: "'k8s_master' in group_names"
+
+- name: Esperar a que los Deployments estén en estado Ready
+  shell: |
+    k3s kubectl rollout status deployment/postgres -n herramientas --timeout=120s
+    k3s kubectl rollout status deployment/pgadmin -n herramientas --timeout=120s
+    k3s kubectl rollout status deployment/postgres-exporter -n herramientas --timeout=120s
+    k3s kubectl rollout status deployment/prometheus -n herramientas --timeout=120s
+    k3s kubectl rollout status deployment/loki -n herramientas --timeout=120s
+    k3s kubectl rollout status deployment/jaeger -n herramientas --timeout=120s
+    k3s kubectl rollout status deployment/grafana -n herramientas --timeout=120s
+  when: "'k8s_master' in group_names"

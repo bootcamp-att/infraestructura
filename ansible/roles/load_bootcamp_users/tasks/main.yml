@@ -1,0 +1,44 @@
+---
+- name: Asegurar que python3-requests esté instalado
+  apt:
+    name: python3-requests
+    state: present
+
+- name: Crear directorio temporal para el proceso de importación
+  file:
+    path: /tmp/lldap_import
+    state: directory
+    mode: '0700'
+
+- name: Copiar archivo de usuarios CSV
+  copy:
+    src: usuarios_bootcamp.csv
+    dest: /tmp/lldap_import/usuarios_bootcamp.csv
+    mode: '0600'
+
+- name: Copiar script de importación Python
+  copy:
+    src: import_users.py
+    dest: /tmp/lldap_import/import_users.py
+    mode: '0700'
+
+- name: Ejecutar script de carga de usuarios en LLDAP
+  command: >
+    python3 /tmp/lldap_import/import_users.py
+    "http://127.0.0.1:1717"
+    "admin"
+    "{{ lldap_admin_password | default('password') }}"
+    "/tmp/lldap_import/usuarios_bootcamp.csv"
+    "lldap"
+    "http://localhost:17170"
+  register: import_output
+  no_log: true
+
+- name: Mostrar resultado de la importación
+  debug:
+    var: import_output.stdout_lines
+
+- name: Limpiar archivos temporales
+  file:
+    path: /tmp/lldap_import
+    state: absent

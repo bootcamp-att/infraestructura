@@ -1,0 +1,6 @@
+---
+- name: Cargar usuarios del Bootcamp en Authelia / LLDAP
+  hosts: identity
+  become: true
+  roles:
+    - load_bootcamp_users

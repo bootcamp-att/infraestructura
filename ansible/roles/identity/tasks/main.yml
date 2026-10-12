@@ -1,0 +1,47 @@
+---
+# 1. Instalar Docker y dependencias
+- name: Instalar dependencias del sistema
+  apt:
+    name:
+      - apt-transport-https
+      - ca-certificates
+      - curl
+      - software-properties-common
+      - docker.io
+      - docker-compose-v2
+    state: present
+    update_cache: true
+
+- name: Asegurar que el servicio de Docker esté corriendo
+  systemd:
+    name: docker
+    state: started
+    enabled: true
+
+# 2. Crear directorio de trabajo
+- name: Crear directorio para el stack de Identidad
+  file:
+    path: /opt/identity
+    state: directory
+    mode: '0755'
+
+# 3. Desplegar plantillas de configuración
+- name: Desplegar plantilla de Authelia
+  template:
+    src: authelia.yml.j2
+    dest: /opt/identity/authelia.yml
+    mode: '0644'
+
+- name: Desplegar docker-compose.yml
+  template:
+    src: docker-compose.yml.j2
+    dest: /opt/identity/docker-compose.yml
+    mode: '0644'
+
+# 4. Iniciar servicios con Docker Compose
+- name: Desplegar contenedores LLDAP y Authelia
+  command: docker compose up -d
+  args:
+    chdir: /opt/identity
+  register: compose_result
+  changed_when: "'Starting' in compose_result.stdout or 'Creating' in compose_result.stdout"

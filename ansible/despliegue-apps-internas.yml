@@ -1,0 +1,5 @@
+- name: Desplegar Microservicios en Kubernetes
+  hosts: k8s_master
+  become: true
+  roles:
+    - despliegue-apps

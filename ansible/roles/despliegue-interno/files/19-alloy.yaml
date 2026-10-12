@@ -1,0 +1,166 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: alloy-config
+  namespace: herramientas
+data:
+  config.alloy: |
+    // ------------------------------------------------------------------
+    // RECEPCIÓN DE TRAZAS Y LOGS / MÉTRICAS VÍA OTLP (OpenTelemetry)
+    // ------------------------------------------------------------------
+    otelcol.receiver.otlp "default" {
+      grpc {
+        endpoint = "0.0.0.0:4317"
+      }
+      http {
+        endpoint = "0.0.0.0:4318"
+      }
+      output {
+        metrics = [otelcol.exporter.prometheus.to_prometheus.input]
+        logs    = [otelcol.exporter.loki.to_loki.input]
+        traces  = [otelcol.exporter.otlp.to_jaeger.input]
+      }
+    }
+
+    // Exportador de Métricas OTLP -> Prometheus
+    otelcol.exporter.prometheus "to_prometheus" {
+      forward_to = [prometheus.remote_write.local_prometheus.receiver]
+    }
+
+    prometheus.remote_write "local_prometheus" {
+      endpoint {
+        url = "http://prometheus.herramientas.svc.cluster.local:9090/api/v1/write"
+      }
+    }
+
+    // Exportador de Logs OTLP -> Loki
+    otelcol.exporter.loki "to_loki" {
+      forward_to = [loki.write.local_loki.receiver]
+    }
+
+    loki.write "local_loki" {
+      endpoint {
+        url = "http://loki.herramientas.svc.cluster.local:3100/loki/api/v1/push"
+      }
+    }
+
+    // Exportador de Trazas OTLP -> Jaeger
+    otelcol.exporter.otlp "to_jaeger" {
+      client {
+        endpoint = "jaeger.herramientas.svc.cluster.local:4317"
+        tls {
+          insecure = true
+        }
+      }
+    }
+
+    // ------------------------------------------------------------------
+    // RECOLECCIÓN DE LOGS DE PODS/CONTENEDORES EN EL CLÚSTER
+    // ------------------------------------------------------------------
+    discovery.kubernetes "pod_logs" {
+      role = "pod"
+    }
+
+    loki.source.kubernetes "pod_logs" {
+      targets    = discovery.kubernetes.pod_logs.targets
+      forward_to = [loki.write.local_loki.receiver]
+    }
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: alloy
+  namespace: herramientas
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: alloy-role
+rules:
+  - apiGroups: [""]
+    resources: ["pods", "pods/log", "namespaces", "nodes"]
+    verbs: ["get", "list", "watch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: alloy-binding
+subjects:
+  - kind: ServiceAccount
+    name: alloy
+    namespace: herramientas
+roleRef:
+  kind: ClusterRole
+  name: alloy-role
+  apiGroup: rbac.authorization.k8s.io
+---
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: alloy
+  namespace: herramientas
+  labels:
+    app: alloy
+spec:
+  selector:
+    matchLabels:
+      app: alloy
+  template:
+    metadata:
+      labels:
+        app: alloy
+    spec:
+      serviceAccountName: alloy
+      containers:
+        - name: alloy
+          image: grafana/alloy:latest
+          args:
+            - run
+            - --server.http.listen-addr=0.0.0.0:12345
+            - /etc/alloy/config.alloy
+          ports:
+            - containerPort: 12345
+              name: http-metrics
+            - containerPort: 4317
+              name: otlp-grpc
+            - containerPort: 4318
+              name: otlp-http
+          volumeMounts:
+            - name: config-volume
+              mountPath: /etc/alloy
+            - name: varlog
+              mountPath: /var/log
+              readOnly: true
+            - name: varlibdockercontainers
+              mountPath: /var/lib/docker/containers
+              readOnly: true
+      volumes:
+        - name: config-volume
+          configMap:
+            name: alloy-config
+        - name: varlog
+          hostPath:
+            path: /var/log
+        - name: varlibdockercontainers
+          hostPath:
+            path: /var/lib/docker/containers
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: alloy
+  namespace: herramientas
+spec:
+  type: ClusterIP
+  ports:
+    - port: 4317
+      targetPort: 4317
+      name: otlp-grpc
+    - port: 4318
+      targetPort: 4318
+      name: otlp-http
+    - port: 12345
+      targetPort: 12345
+      name: http-metrics
+  selector:
+    app: alloy

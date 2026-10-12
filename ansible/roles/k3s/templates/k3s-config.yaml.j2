@@ -1,0 +1,7 @@
+# Configuración del clúster K3s
+write-kubeconfig-mode: "0644"
+tls-san:
+  - "{{ hostvars[inventory_hostname]['ansible_host'] }}"
+  - "{{ ansible_default_ipv4.address }}"
+disable:
+  - traefik  # Deshabilitamos Traefik para usar Kong como Gateway público

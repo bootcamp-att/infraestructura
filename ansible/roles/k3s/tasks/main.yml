@@ -1,0 +1,99 @@
+---
+- name: Instalar dependencias previas de K3s
+  apt:
+    name:
+      - curl
+      - ca-certificates
+    state: present
+    update_cache: yes
+
+# ==========================================
+# CONFIGURACIÓN DEL MASTER (k8s_master)
+# ==========================================
+- name: Crear directorio de configuración de K3s en Master
+  file:
+    path: /etc/rancher/k3s
+    state: directory
+    mode: '0755'
+  when: "'k8s_master' in group_names"
+
+- name: Desplegar plantilla de configuración de K3s en Master
+  template:
+    src: k3s-config.yaml.j2
+    dest: /etc/rancher/k3s/config.yaml
+    mode: '0644'
+  when: "'k8s_master' in group_names"
+
+- name: Verificar si K3s Master ya está instalado
+  stat:
+    path: /usr/local/bin/k3s
+  register: k3s_master_binary
+  when: "'k8s_master' in group_names"
+
+- name: Instalar K3s Master
+  shell: |
+    curl -sfL https://get.k3s.io | sh -
+  when: 
+    - "'k8s_master' in group_names"
+    - not k3s_master_binary.stat.exists
+
+- name: Esperar a que se genere el token del nodo Master
+  wait_for:
+    path: /var/lib/rancher/k3s/server/node-token
+    timeout: 60
+  when: "'k8s_master' in group_names"
+
+- name: Obtener el token de unión del Master
+  command: cat /var/lib/rancher/k3s/server/node-token
+  register: k3s_node_token
+  when: "'k8s_master' in group_names"
+
+- name: Registrar token globalmente en Ansible
+  set_fact:
+    k3s_token: "{{ k3s_node_token.stdout }}"
+  when: "'k8s_master' in group_names"
+
+- name: Ajustar permisos a kubeconfig
+  file:
+    path: /etc/rancher/k3s/k3s.yaml
+    mode: '0644'
+  when: "'k8s_master' in group_names"
+
+# ==========================================
+# CONFIGURACIÓN DE LOS WORKERS (k8s_workers)
+# ==========================================
+- name: Verificar si K3s Worker ya está instalado
+  stat:
+    path: /usr/local/bin/k3s
+  register: k3s_worker_binary
+  when: "'k8s_workers' in group_names"
+
+- name: Unir nodo Worker al clúster K3s
+  shell: |
+    curl -sfL https://get.k3s.io | K3S_URL=https://{{ hostvars[groups['k8s_master'][0]]['ansible_host'] }}:6443 K3S_TOKEN={{ hostvars[groups['k8s_master'][0]]['k3s_token'] }} sh -
+  when: 
+    - "'k8s_workers' in group_names"
+    - not k3s_worker_binary.stat.exists
+
+# ==========================================
+# CONFIGURACIÓN DEL INGRESS CONTROLLER (MASTER)
+# ==========================================
+- name: Remover restricción (taint) del nodo Master para permitir workloads
+  shell: |
+    kubectl taint nodes {{ hostvars[inventory_hostname]['ansible_facts']['nodename'] | default(inventory_hostname) }} node-role.kubernetes.io/control-plane:NoSchedule- || true
+  when: "'k8s_master' in group_names"
+
+- name: Desplegar manifest oficial de Ingress NGINX Controller
+  shell: |
+    kubectl apply -f https://raw.githubusercontent.com/kubernetes/ingress-nginx/controller-v1.8.2/deploy/static/provider/baremetal/deploy.yaml
+  when: "'k8s_master' in group_names"
+
+- name: Configurar Ingress Controller en modo hostNetwork
+  shell: |
+    kubectl patch deployment ingress-nginx-controller -n ingress-nginx --type='json' -p='[{"op": "add", "path": "/spec/template/spec/hostNetwork", "value": true}]'
+  when: "'k8s_master' in group_names"
+
+- name: Anclar Ingress Controller al nodo Master (nodeSelector)
+  shell: |
+    kubectl patch deployment ingress-nginx-controller -n ingress-nginx --type='json' -p='[{"op": "add", "path": "/spec/template/spec/nodeSelector", "value": {"kubernetes.io/hostname": "{{ hostvars[inventory_hostname]['ansible_facts']['nodename'] }}"}}]'
+  when: "'k8s_master' in group_names"

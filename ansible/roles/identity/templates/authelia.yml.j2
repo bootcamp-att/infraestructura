@@ -1,0 +1,46 @@
+server:
+  address: tcp://0.0.0.0:9091/authelia
+
+log:
+  level: info
+
+identity_validation:
+  reset_password:
+    jwt_secret: secret_jwt_authelia_bootcamp_2026_very_long
+
+default_redirection_url: https://54.161.157.90/authelia/
+
+authentication_backend:
+  password_reset:
+    disable: true
+  ldap:
+    implementation: custom
+    address: ldap://lldap:3890
+    timeout: 5s
+    base_dn: dc=bootcamp,dc=local
+    users_filter: (&({username_attribute}={input})(objectClass=person))
+    groups_filter: (member={dn})
+    user: cn=admin,ou=people,dc=bootcamp,dc=local
+    password: adminpassword123
+
+access_control:
+  default_policy: deny
+  rules:
+    - domain: "54.161.157.90"
+      policy: one_factor
+
+session:
+  name: authelia_session
+  secret: secret_session_authelia_bootcamp_2026_very_long
+  expiration: 3600
+  inactivity: 300
+  domain: "54.161.157.90"
+
+storage:
+  encryption_key: super_secret_storage_encryption_key_bootcamp_2026
+  local:
+    path: /config/db.sqlite
+
+notifier:
+  filesystem:
+    filename: /config/notification.txt

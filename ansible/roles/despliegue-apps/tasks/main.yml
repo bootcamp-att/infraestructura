@@ -1,0 +1,46 @@
+---
+# ====================================================
+# DESPLIEGUE DE MICROSERVICIOS Y SU INGRESS
+# ====================================================
+
+- name: Asegurar directorio temporal de manifiestos en el Master
+  file:
+    path: /tmp/manifests/apps
+    state: directory
+    mode: '0755'
+  when: "'k8s_master' in group_names"
+
+- name: Copiar manifiestos YAML al Master
+  copy:
+    src: "{{ item }}"
+    dest: "/tmp/manifests/apps/{{ item }}"
+    mode: '0644'
+  loop:
+    - 01-namespace-apps.yaml
+    - 02-catalogo-deployment.yaml
+    - 03-descuento-deployment.yaml
+    - 04-productos-deployment.yaml
+    - 05-productos-ingress.yaml
+  when: "'k8s_master' in group_names"
+
+- name: Aplicar manifiestos K8s con kubectl
+  shell: |
+    kubectl apply -f /tmp/manifests/apps/
+  when: "'k8s_master' in group_names"
+  register: kubectl_apply_res
+  changed_when: "'configured' in kubectl_apply_res.stdout or 'created' in kubectl_apply_res.stdout"
+
+- name: Esperar a que el Pod de Catalogo esté en estado Ready
+  shell: |
+    kubectl rollout status deployment/catalogo-deployment -n apps --timeout=120s
+  when: "'k8s_master' in group_names"
+
+- name: Esperar a que el Pod de Descuento esté en estado Ready
+  shell: |
+    kubectl rollout status deployment/descuento-deployment -n apps --timeout=120s
+  when: "'k8s_master' in group_names"
+
+- name: Esperar a que el Pod de Productos esté en estado Ready
+  shell: |
+    kubectl rollout status deployment/productos-deployment -n apps --timeout=120s
+  when: "'k8s_master' in group_names"

@@ -1,0 +1,10 @@
+database = off
+declarative_config = /etc/kong/kong.yml
+
+proxy_listen = 0.0.0.0:80, 0.0.0.0:443 ssl
+
+ssl_cert = {{ kong_ssl_dir }}/kong.crt
+ssl_cert_key = {{ kong_ssl_dir }}/kong.key
+
+proxy_access_log = /var/log/kong/proxy_access.log
+proxy_error_log = /var/log/kong/proxy_error.log

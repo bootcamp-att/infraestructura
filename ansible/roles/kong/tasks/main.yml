@@ -1,0 +1,144 @@
+---
+# 1. Instalar dependencias base
+- name: Instalar paquetes necesarios
+  apt:
+    name:
+      - curl
+      - openssl
+      - libpcre3
+      - procps
+      - perl
+      - nginx
+    state: present
+    update_cache: true
+
+# 2. Configurar el sitio estático local (para el backend proxy)
+- name: Crear directorio para el sitio estático local
+  file:
+    path: "{{ kong_static_web_dir | default('/var/www/html_static') }}"
+    state: directory
+    mode: '0755'
+
+- name: Desplegar página index.html estática
+  template:
+    src: index.html.j2
+    dest: "{{ kong_static_web_dir | default('/var/www/html_static') }}/index.html"
+    mode: '0644'
+
+- name: Desplegar página de error estática personalizada
+  template:
+    src: error.html.j2
+    dest: "{{ kong_static_web_dir | default('/var/www/html_static') }}/error.html"
+    mode: '0644'
+
+- name: Desplegar página privada interno_index.html estática
+  template:
+    src: interno_index.html.j2
+    dest: "{{ kong_static_web_dir | default('/var/www/html_static') }}/interno_index.html"
+    mode: '0644'
+
+- name: Configurar Nginx para servir la web estática y la sección privada /home
+  copy:
+    dest: /etc/nginx/sites-available/default
+    content: |
+      server {
+          listen 8080 default_server;
+          root {{ kong_static_web_dir | default('/var/www/html_static') }};
+          index index.html;
+          server_name _;
+
+          # Página de inicio pública
+          location / {
+              try_files $uri $uri/ /error.html;
+          }
+
+          # Ruta privada estática (cambiada de /interno a /home)
+          location /home {
+              alias {{ kong_static_web_dir | default('/var/www/html_static') }};
+              try_files /interno_index.html =404;
+          }
+
+          # Manejo de errores
+          error_page 404 /error.html;
+          location = /error.html {
+              internal;
+          }
+      }
+    mode: '0644'
+
+- name: Reiniciar Nginx
+  systemd:
+    name: nginx
+    state: restarted
+    enabled: yes
+
+# 3. Descargar e instalar paquete oficial .deb de Kong Gateway
+- name: Descargar paquete oficial .deb de Kong Gateway
+  get_url:
+    url: "https://packages.konghq.com/public/gateway-34/deb/ubuntu/pool/jammy/main/k/ko/kong-enterprise-edition_3.4.3.1/kong-enterprise-edition_3.4.3.1_amd64.deb"
+    dest: "/tmp/kong.deb"
+    mode: '0644'
+
+- name: Instalar paquete Kong .deb
+  apt:
+    deb: "/tmp/kong.deb"
+    state: present
+
+- name: Limpiar paquete .deb temporal
+  file:
+    path: "/tmp/kong.deb"
+    state: absent
+
+# 4. Generar Certificado SSL Auto-firmado
+- name: Asegurar directorio para certificados de Kong
+  file:
+    path: /etc/kong/ssl
+    state: directory
+    mode: '0755'
+
+- name: Generar clave privada y certificado auto-firmado
+  command: >
+    openssl req -x509 -nodes -days 365 -newkey rsa:2048
+    -keyout /etc/kong/ssl/kong.key
+    -out /etc/kong/ssl/kong.crt
+    -subj "/CN={{ ansible_host }}"
+  args:
+    creates: /etc/kong/ssl/kong.crt
+
+# 5. Crear archivo declarativo kong.yml desde Template
+- name: Asegurar directorio /etc/kong
+  file:
+    path: /etc/kong
+    state: directory
+    mode: '0755'
+
+- name: Crear archivo declarativo kong.yml
+  template:
+    src: kong.yml.j2
+    dest: /etc/kong/kong.yml
+    mode: '0644'
+
+# 6. Configurar /etc/kong/kong.conf para modo DB-less, SSL y Sandbox Permisivo
+- name: Configurar /etc/kong/kong.conf
+  copy:
+    dest: /etc/kong/kong.conf
+    mode: '0644'
+    content: |
+      database = off
+      declarative_config = /etc/kong/kong.yml
+      proxy_listen = 0.0.0.0:80, 0.0.0.0:443 ssl
+      ssl_cert = /etc/kong/ssl/kong.crt
+      ssl_cert_key = /etc/kong/ssl/kong.key
+      admin_listen = 127.0.0.1:8001
+      untrusted_lua_sandbox_requires = resty.http
+
+# 7. Recargar y arrancar Kong
+- name: Recargar demonio systemd
+  systemd:
+    daemon_reload: true
+
+- name: Arrancar o recargar servicio de Kong
+  shell: |
+    kong start -c /etc/kong/kong.conf || kong reload -c /etc/kong/kong.conf
+  register: kong_start_result
+  changed_when: "'Kong started' in kong_start_result.stdout or 'Kong reloaded' in kong_start_result.stdout"

@@ -1,0 +1,4 @@
+---
+kong_version: "3.6.1"
+kong_ssl_dir: "/etc/kong/ssl"
+kong_static_web_dir: "/var/www/html_static"

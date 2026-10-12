@@ -1,0 +1,6 @@
+---
+- name: Desplegar Infraestructura Interna en Kubernetes
+  hosts: k8s_master
+  become: true
+  roles:
+    - despliegue-interno

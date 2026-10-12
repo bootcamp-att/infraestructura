@@ -1,0 +1,128 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: grafana-datasources
+  namespace: herramientas
+data:
+  datasources.yaml: |
+    apiVersion: 1
+    datasources:
+      - name: Prometheus
+        type: prometheus
+        access: proxy
+        url: http://prometheus.herramientas.svc.cluster.local:9090
+        isDefault: true
+        jsonData:
+          httpMethod: POST
+
+      - name: Loki
+        type: loki
+        access: proxy
+        url: http://loki.herramientas.svc.cluster.local:3100
+        jsonData:
+          derivedFields:
+            - datasourceUid: jaeger
+              matcherRegex: "trace_id=(\\w+)"
+              name: TraceID
+              url: '$${__value.raw}'
+
+      - name: Jaeger
+        type: jaeger
+        uid: jaeger
+        access: proxy
+        url: http://jaeger.herramientas.svc.cluster.local:16686/interno/jaeger
+        jsonData:
+          tracesToLogs:
+            datasourceUid: Loki
+            tags: ['job', 'instance', 'pod', 'namespace']
+            spanStartTimeShift: '-1h'
+            spanEndTimeShift: '1h'
+            filterByTraceID: false
+            filterBySpanID: false
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: grafana-pvc
+  namespace: herramientas
+spec:
+  accessModes: [ReadWriteOnce]
+  storageClassName: local-path
+  resources:
+    requests:
+      storage: 1Gi
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: grafana
+  namespace: herramientas
+  labels:
+    app: grafana
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app: grafana
+  template:
+    metadata:
+      labels:
+        app: grafana
+    spec:
+      affinity:
+        nodeAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            nodeSelectorTerms:
+              - matchExpressions:
+                  - key: node-role.kubernetes.io/control-plane
+                    operator: DoesNotExist
+      containers:
+      - name: grafana
+        image: grafana/grafana:13.2.3
+        imagePullPolicy: IfNotPresent
+        env:
+        - name: GF_SERVER_ROOT_URL
+          value: "/interno/grafana/"
+        # Habilitar acceso anónimo (Sin Login)
+        - name: GF_AUTH_ANONYMOUS_ENABLED
+          value: "true"
+        - name: GF_AUTH_ANONYMOUS_ORG_ROLE
+          value: "Admin"
+        - name: GF_AUTH_DISABLE_LOGIN_FORM
+          value: "true"
+        ports:
+        - containerPort: 3000
+          name: http
+        resources:
+          requests:
+            cpu: 100m
+            memory: 128Mi
+            ephemeral-storage: 200Mi
+        volumeMounts:
+        - name: datasources-volume
+          mountPath: /etc/grafana/provisioning/datasources
+        - name: data
+          mountPath: /var/lib/grafana
+      volumes:
+      - name: datasources-volume
+        configMap:
+          name: grafana-datasources
+      - name: data
+        persistentVolumeClaim:
+          claimName: grafana-pvc
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: grafana
+  namespace: herramientas
+spec:
+  type: ClusterIP
+  ports:
+  - port: 3000
+    targetPort: 3000
+    name: http
+  selector:
+    app: grafana

@@ -1,0 +1,48 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: productos-deployment
+  namespace: apps
+  labels:
+    app: productos-service
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: productos-service
+  template:
+    metadata:
+      labels:
+        app: productos-service
+    spec:
+      containers:
+      - name: productos-container
+        image: docker.io/abrahamntd/productos-service:1.0.4
+        imagePullPolicy: Always
+        ports:
+        - containerPort: 8080
+          name: http
+        - containerPort: 8091
+          name: metrics
+        env:
+        - name: SERVICES_CATALOG_URL
+          value: "http://catalogo-service.apps.svc.cluster.local:8082"
+        - name: SERVICES_DISCOUNT_URL
+          value: "http://descuento-service.apps.svc.cluster.local:8081"
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: productos-service
+  namespace: apps
+spec:
+  type: ClusterIP
+  selector:
+    app: productos-service
+  ports:
+  - port: 8080
+    targetPort: 8080
+    name: http
+  - port: 8091
+    targetPort: 8091
+    name: metrics
