@@ -222,13 +222,8 @@ terraform destroy
 
 ## Seguridad
 
-Este laboratorio prioriza la facilidad de uso para formación. Antes de reutilizarlo fuera de ese contexto, ten en cuenta:
-
-- **El estado de Terraform es sensible.** `terraform.tfstate` puede contener información sensible (por ejemplo, la llave SSH generada). Está excluido en `.gitignore`; no lo subas nunca al repositorio. Más información: [Sensitive data in state](https://developer.hashicorp.com/terraform/language/state/sensitive-data).
-- **No subas secretos.** Los archivos `*.tfvars`, las llaves (`*.pem`, `*.key`) y el inventario generado están excluidos. Para credenciales en Ansible usa [Ansible Vault](https://docs.ansible.com/ansible/latest/vault_guide/index.html).
-- **Verificación de host SSH deshabilitada.** El inventario usa `StrictHostKeyChecking=no` porque las instancias son efímeras. En producción debe estar habilitada.
-- **Acceso por bastion.** Restringe el origen del puerto 22 a tu IP en los Security Groups.
-- **Destruye el laboratorio** cuando no lo uses.
+Este laboratorio prioriza la facilidad de uso para formación. 
+El bastion debe de ser destruido o apagado despues de la creacion del laboratorio para no exponer el puerto 22 de forma inesesaria.
 
 ## Solución de problemas
 
